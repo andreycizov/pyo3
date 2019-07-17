@@ -431,13 +431,18 @@ pub fn impl_arg_params(spec: &FnSpec<'_>, body: TokenStream) -> TokenStream {
     }
 
     let mut params = Vec::new();
+    let mut is_kw_only = false;
 
     for arg in spec.args.iter() {
+        if spec.is_args(&arg.name) {
+            is_kw_only = true;
+        }
+
         if arg.py || spec.is_args(&arg.name) || spec.is_kwargs(&arg.name) {
             continue;
         }
         let name = arg.name;
-        let kwonly = bool_to_ident(spec.is_kw_only(&arg.name));
+        let kwonly = bool_to_ident(is_kw_only || spec.is_kw_only(&arg.name));
         let opt = bool_to_ident(arg.optional.is_some() || spec.default_value(&arg.name).is_some());
 
         params.push(quote! {
@@ -505,8 +510,6 @@ fn impl_arg_param(
             let #arg_name = _py;
         };
     }
-    let arg_value = quote!(output[#option_pos]);
-    *option_pos += 1;
 
     let ty = arg.ty;
     let name = arg.name;
@@ -519,41 +522,47 @@ fn impl_arg_param(
         quote! {
             let #arg_name = _kwargs;
         }
-    } else if arg.optional.is_some() {
-        let default = if let Some(d) = spec.default_value(name) {
-            quote! { Some(#d) }
-        } else {
-            quote! { None }
-        };
-
-        quote! {
-            let #arg_name = match #arg_value.as_ref() {
-                Some(_obj) => {
-                    if _obj.is_none() {
-                        #default
-                    } else {
-                        Some(_obj.extract()?)
-                    }
-                },
-                None => #default
-            };
-        }
-    } else if let Some(default) = spec.default_value(name) {
-        quote! {
-            let #arg_name = match #arg_value.as_ref() {
-                Some(_obj) => {
-                    if _obj.is_none() {
-                        #default
-                    } else {
-                        _obj.extract()?
-                    }
-                },
-                None => #default
-            };
-        }
     } else {
-        quote! {
-            let #arg_name = #arg_value.unwrap().extract()?;
+        // if we combine args/kwargs and other arguments we get an overflow in output[#option_pos]
+        let arg_value = quote!(output[#option_pos]);
+        *option_pos += 1;
+
+        if arg.optional.is_some() {
+            let default = if let Some(d) = spec.default_value(name) {
+                quote! { Some(#d) }
+            } else {
+                quote! { None }
+            };
+
+            quote! {
+                let #arg_name = match #arg_value.as_ref() {
+                    Some(_obj) => {
+                        if _obj.is_none() {
+                            #default
+                        } else {
+                            Some(_obj.extract()?)
+                        }
+                    },
+                    None => #default
+                };
+            }
+        } else if let Some(default) = spec.default_value(name) {
+            quote! {
+                let #arg_name = match #arg_value.as_ref() {
+                    Some(_obj) => {
+                        if _obj.is_none() {
+                            #default
+                        } else {
+                            _obj.extract()?
+                        }
+                    },
+                    None => #default
+                };
+            }
+        } else {
+            quote! {
+                let #arg_name = #arg_value.unwrap().extract()?;
+            }
         }
     }
 }

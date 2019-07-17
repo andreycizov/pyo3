@@ -223,6 +223,16 @@ impl MethArgs {
     fn get_kwarg(&self, test: i32) -> PyResult<i32> {
         Ok(test)
     }
+    #[args(args="*", test = 10)]
+    fn get_args_kwarg<'a>(&self, _py: Python<'a>, args: &PyTuple, test: i32) -> PyResult<&'a PyTuple> {
+        Ok(PyTuple::new(
+            _py,
+            &[
+                args.to_object(_py),
+                test.to_object(_py)
+            ]
+        ))
+    }
     #[args(args = "*", kwargs = "**")]
     fn get_kwargs(
         &self,
@@ -246,6 +256,10 @@ fn meth_args() {
     py_run!(py, inst, "assert inst.get_default(100) == 100");
     py_run!(py, inst, "assert inst.get_kwarg() == 10");
     py_run!(py, inst, "assert inst.get_kwarg(100) == 10");
+    py_run!(py, inst, "assert inst.get_args_kwarg() == (tuple(), 10)");
+    py_run!(py, inst, "assert inst.get_args_kwarg(100) == ((100,), 10)");
+    py_run!(py, inst, "assert inst.get_args_kwarg(test=100) == (tuple(), 100)");
+    py_run!(py, inst, "assert inst.get_args_kwarg(1, 2, 3) == ((1, 2, 3), 10)");
     py_run!(py, inst, "assert inst.get_kwarg(test=100) == 100");
     py_run!(py, inst, "assert inst.get_kwargs() == [(), None]");
     py_run!(py, inst, "assert inst.get_kwargs(1,2,3) == [(1,2,3), None]");
